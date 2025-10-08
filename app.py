@@ -1213,7 +1213,7 @@ def duplicate_user_provisioning():
 
 def database_groups():
     st.title("📂 Database Groups Management")
-    uploaded_file = st.file_uploader("📂 Upload BASIS DBA_USER REPORT", type=["xls", "xlsx"])
+    uploaded_file = st.file_uploader("📂 Upload ORACLE DBA_USER REPORT", type=["xls", "xlsx"])
     if uploaded_file:
         db_users = pd.read_excel(uploaded_file)
 
@@ -1249,7 +1249,7 @@ def database_groups():
 
 def database_privilege_users():
     st.title("🔑 Database Privilege Users")
-    uploaded_file = st.file_uploader("📂 Upload BASIS DBA_ROLE_PRIVS", type=["xlsx"], key="db_priv")
+    uploaded_file = st.file_uploader("📂 Upload ORACLE DBA_ROLE_PRIVS", type=["xlsx"], key="db_priv")
     if uploaded_file:
         db_priv_df = pd.read_excel(uploaded_file)
 
@@ -1285,7 +1285,7 @@ def database_privilege_users():
 
 def database_profiles():
     st.title("🗂 Database Profiles")
-    uploaded_file = st.file_uploader("📂 Upload BASIS_DBA_PROFILES", type=["xls", "xlsx"])
+    uploaded_file = st.file_uploader("📂 Upload ORACLE_DBA_PROFILES", type=["xls", "xlsx"])
 
     if uploaded_file:
         database_profile = pd.read_excel(uploaded_file)
