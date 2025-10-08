@@ -1234,11 +1234,62 @@ def database_groups():
         try:
             db_users = pd.read_excel(uploaded_file)
             
-            # Standardize column names (case-insensitive)
-            db_users.columns = db_users.columns.str.upper()
-            
             # Display dataset info
             st.success(f"✅ Successfully loaded {len(db_users)} user accounts")
+            st.info(f"📊 Columns detected: {', '.join(db_users.columns)}")
+            
+            # =============================================================================
+            # COLUMN SELECTION SECTION
+            # =============================================================================
+            st.header("🔧 Configure Security Checks")
+            st.markdown("Select the appropriate columns from your file for each security check:")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                username_col = st.selectbox(
+                    "👤 Username Column",
+                    options=[''] + list(db_users.columns),
+                    index=0,
+                    help="Select the column containing usernames"
+                )
+                
+                status_col = st.selectbox(
+                    "🔒 Account Status Column",
+                    options=[''] + list(db_users.columns),
+                    index=0,
+                    help="Select the column showing account status (OPEN, LOCKED, EXPIRED, etc.)"
+                )
+            
+            with col2:
+                profile_col = st.selectbox(
+                    "👥 Profile Column",
+                    options=[''] + list(db_users.columns),
+                    index=0,
+                    help="Select the column containing user profiles"
+                )
+                
+                created_col = st.selectbox(
+                    "📅 Account Created Date Column",
+                    options=[''] + list(db_users.columns),
+                    index=0,
+                    help="Select the column showing when accounts were created"
+                )
+            
+            with col3:
+                password_col = st.selectbox(
+                    "🔐 Password Version Column",
+                    options=[''] + list(db_users.columns),
+                    index=0,
+                    help="Select the column showing password versions (optional)"
+                )
+                
+                privilege_col = st.selectbox(
+                    "👑 Privilege/Role Column",
+                    options=[''] + list(db_users.columns),
+                    index=0,
+                    help="Select the column showing user privileges or roles (optional)"
+                )
             
             # =============================================================================
             # SECURITY ANALYSIS SECTION
@@ -1247,182 +1298,592 @@ def database_groups():
             
             # Initialize findings
             security_findings = []
+            analysis_results = {}
             
             # 1. Identify Inactive/Locked Accounts
-            if 'ACCOUNT STATUS' in db_users.columns:
-                inactive_accounts = db_users[db_users['ACCOUNT STATUS'].str.upper().isin(['LOCKED', 'EXPIRED', 'EXPIRED(GRACE)', 'INACTIVE'])]
-                if not inactive_accounts.empty:
-                    st.subheader("🔒 Inactive/Locked Accounts")
-                    st.dataframe(inactive_accounts[['USERNAME', 'ACCOUNT STATUS', 'CREATED']].head(10))
-                    security_findings.append(f"🚨 {len(inactive_accounts)} inactive/locked accounts found")
+            if status_col:
+                st.subheader("🔒 Account Status Analysis")
+                try:
+                    status_counts = db_users[status_col].value_counts()
+                    st.dataframe(status_counts)
                     
-                    # Show inactive accounts by profile
-                    inactive_by_profile = inactive_accounts['PROFILE'].value_counts() if 'PROFILE' in inactive_accounts.columns else pd.Series()
-                    if not inactive_by_profile.empty:
-                        st.write("**Inactive accounts by profile:**")
-                        st.dataframe(inactive_by_profile)
+                    # Identify problematic statuses
+                    inactive_statuses = ['LOCKED', 'EXPIRED', 'EXPIRED(GRACE)', 'INACTIVE', 'LOCKED(TIMED)']
+                    inactive_accounts = db_users[
+                        db_users[status_col].astype(str).str.upper().isin([s.upper() for s in inactive_statuses])
+                    ]
+                    
+                    if not inactive_accounts.empty:
+                        st.warning(f"🚨 {len(inactive_accounts)} inactive/locked accounts found")
+                        display_cols = [username_col, status_col]
+                        if created_col:
+                            display_cols.append(created_col)
+                        if profile_col:
+                            display_cols.append(profile_col)
+                        
+                        st.dataframe(inactive_accounts[display_cols].head(15))
+                        security_findings.append(f"🚨 {len(inactive_accounts)} inactive/locked accounts found")
+                        analysis_results['inactive_accounts'] = inactive_accounts
+                    else:
+                        st.success("✅ No inactive/locked accounts found")
+                        
+                except Exception as e:
+                    st.error(f"Error analyzing account status: {str(e)}")
             
             # 2. Detect Default/Weak Credentials
-            if 'USERNAME' in db_users.columns:
-                default_users = ['SYS', 'SYSTEM', 'DBSNMP', 'OUTLN', 'MGMT_VIEW', 'SYSMAN']
-                found_default = db_users[db_users['USERNAME'].str.upper().isin([u.upper() for u in default_users])]
-                if not found_default.empty:
-                    st.subheader("⚠️ Default Database Accounts")
-                    st.dataframe(found_default[['USERNAME', 'ACCOUNT STATUS', 'PROFILE']])
-                    security_findings.append(f"⚠️ {len(found_default)} default database accounts found")
+            if username_col:
+                st.subheader("⚠️ Default Account Detection")
+                default_users = ['SYS', 'SYSTEM', 'DBSNMP', 'OUTLN', 'MGMT_VIEW', 'SYSMAN', 'SCOTT']
+                try:
+                    found_default = db_users[
+                        db_users[username_col].astype(str).str.upper().isin([u.upper() for u in default_users])
+                    ]
+                    
+                    if not found_default.empty:
+                        st.warning(f"⚠️ {len(found_default)} default database accounts found")
+                        display_cols = [username_col]
+                        if status_col:
+                            display_cols.append(status_col)
+                        if profile_col:
+                            display_cols.append(profile_col)
+                            
+                        st.dataframe(found_default[display_cols])
+                        security_findings.append(f"⚠️ {len(found_default)} default database accounts found")
+                        analysis_results['default_accounts'] = found_default
+                    else:
+                        st.success("✅ No default database accounts found")
+                        
+                except Exception as e:
+                    st.error(f"Error analyzing default accounts: {str(e)}")
             
             # 3. Identify Users with DBA Privileges
-            if 'PROFILE' in db_users.columns:
-                dba_profiles = ['DBA', 'SYSDBA', 'SYSOPER', 'SYSDG', 'SYSBACKUP', 'SYSKM']
-                dba_users = db_users[db_users['PROFILE'].str.upper().isin([p.upper() for p in dba_profiles])]
-                if not dba_users.empty:
-                    st.subheader("👑 Users with DBA Privileges")
-                    st.dataframe(dba_users[['USERNAME', 'PROFILE', 'ACCOUNT STATUS']])
-                    security_findings.append(f"👑 {len(dba_users)} users with DBA privileges")
-            
-            # 4. Check for Old Accounts
-            if 'CREATED' in db_users.columns:
-                # Convert to datetime if possible
+            if profile_col:
+                st.subheader("👑 Privileged Account Analysis")
+                dba_profiles = ['DBA', 'SYSDBA', 'SYSOPER', 'SYSDG', 'SYSBACKUP', 'SYSKM', 'SYSRAC', 'SYSASM']
                 try:
-                    db_users['CREATED'] = pd.to_datetime(db_users['CREATED'])
-                    one_year_ago = pd.Timestamp.now() - pd.DateOffset(years=1)
-                    old_accounts = db_users[db_users['CREATED'] < one_year_ago]
-                    if not old_accounts.empty:
-                        st.subheader("📅 Accounts Older Than 1 Year")
-                        st.dataframe(old_accounts[['USERNAME', 'CREATED', 'PROFILE']].head(10))
-                        security_findings.append(f"📅 {len(old_accounts)} accounts older than 1 year")
-                except:
-                    pass
+                    dba_users = db_users[
+                        db_users[profile_col].astype(str).str.upper().isin([p.upper() for p in dba_profiles])
+                    ]
+                    
+                    if not dba_users.empty:
+                        st.warning(f"👑 {len(dba_users)} users with DBA/privileged profiles found")
+                        display_cols = [username_col, profile_col]
+                        if status_col:
+                            display_cols.append(status_col)
+                            
+                        st.dataframe(dba_users[display_cols])
+                        security_findings.append(f"👑 {len(dba_users)} users with DBA/privileged profiles")
+                        analysis_results['dba_users'] = dba_users
+                    else:
+                        st.success("✅ No users with DBA profiles found")
+                        
+                except Exception as e:
+                    st.error(f"Error analyzing privileged accounts: {str(e)}")
             
-            # 5. Profile-Based Analysis
-            if 'PROFILE' in db_users.columns:
+            # 4. Profile Distribution Analysis
+            if profile_col:
                 st.subheader("📊 Profile Distribution")
-                profile_counts = db_users['PROFILE'].value_counts()
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.dataframe(profile_counts.head(10))
-                
-                with col2:
-                    if len(profile_counts) > 0:
-                        fig, ax = plt.subplots(figsize=(10, 6))
-                        profile_counts.head(10).plot(kind='bar', ax=ax, color='skyblue')
-                        ax.set_title('Top 10 Profiles by User Count')
-                        ax.set_ylabel('Number of Users')
-                        plt.xticks(rotation=45)
-                        st.pyplot(fig)
+                try:
+                    profile_counts = db_users[profile_col].value_counts()
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.dataframe(profile_counts.head(15))
+                    
+                    with col2:
+                        if len(profile_counts) > 0:
+                            fig, ax = plt.subplots(figsize=(10, 6))
+                            profile_counts.head(10).plot(kind='bar', ax=ax, color='skyblue')
+                            ax.set_title('Top 10 Profiles by User Count')
+                            ax.set_ylabel('Number of Users')
+                            ax.set_xlabel('Profile Name')
+                            plt.xticks(rotation=45, ha='right')
+                            st.pyplot(fig)
+                            
+                    # Identify profiles with many users (potential risk)
+                    large_profiles = profile_counts[profile_counts > 10]
+                    if not large_profiles.empty:
+                        security_findings.append(f"📊 {len(large_profiles)} profiles with more than 10 users")
+                        
+                except Exception as e:
+                    st.error(f"Error analyzing profile distribution: {str(e)}")
+            
+            # 5. Account Age & Security Risk Analysis
+            if created_col and status_col:
+                st.subheader("📅 Account Age & Security Risk Analysis")
+                try:
+                    # Convert to datetime
+                    db_users['CREATED_DATE'] = pd.to_datetime(db_users[created_col], errors='coerce')
+                    valid_dates = db_users['CREATED_DATE'].notna()
+                    
+                    if valid_dates.any():
+                        one_year_ago = pd.Timestamp.now() - pd.DateOffset(years=1)
+                        
+                        # Find accounts older than 1 year
+                        old_accounts = db_users[valid_dates & (db_users['CREATED_DATE'] < one_year_ago)]
+                        
+                        if not old_accounts.empty:
+                            # Define active statuses (accounts that are still usable)
+                            active_statuses = ['OPEN', 'ACTIVE', 'VALID', 'ENABLED']
+                            
+                            # Find OLD accounts that are still ACTIVE - HIGH SECURITY RISK!
+                            old_active_accounts = old_accounts[
+                                old_accounts[status_col].astype(str).str.upper().isin([s.upper() for s in active_statuses])
+                            ]
+                            
+                            # Find old accounts that are properly locked/expired
+                            old_inactive_accounts = old_accounts[
+                                ~old_accounts[status_col].astype(str).str.upper().isin([s.upper() for s in active_statuses])
+                            ]
+                            
+                            # HIGH RISK: Old accounts still active
+                            if not old_active_accounts.empty:
+                                st.error(f"🚨 HIGH RISK: {len(old_active_accounts)} accounts older than 1 year are still ACTIVE!")
+                                
+                                display_cols = [username_col, status_col, 'CREATED_DATE']
+                                if profile_col:
+                                    display_cols.append(profile_col)
+                                
+                                st.dataframe(old_active_accounts[display_cols].sort_values('CREATED_DATE'))
+                                
+                                # Show risk breakdown by profile
+                                if profile_col:
+                                    risk_by_profile = old_active_accounts[profile_col].value_counts()
+                                    if not risk_by_profile.empty:
+                                        st.write("**High-risk accounts by profile:**")
+                                        st.dataframe(risk_by_profile)
+                                
+                                security_findings.append(f"🚨 HIGH RISK: {len(old_active_accounts)} old accounts (>1 year) still active")
+                                analysis_results['old_active_accounts_high_risk'] = old_active_accounts
+                            
+                            # Informational: Old accounts that are properly managed
+                            if not old_inactive_accounts.empty:
+                                st.info(f"✅ {len(old_inactive_accounts)} old accounts are properly locked/expired")
+                                security_findings.append(f"✅ {len(old_inactive_accounts)} old accounts properly locked/expired")
+                            
+                            # Show overall old account statistics
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Total Old Accounts", len(old_accounts))
+                            with col2:
+                                st.metric("High Risk (Active)", len(old_active_accounts), delta=f"{len(old_active_accounts)/len(old_accounts)*100:.1f}%", delta_color="inverse")
+                            with col3:
+                                st.metric("Properly Managed", len(old_inactive_accounts), delta=f"{len(old_inactive_accounts)/len(old_accounts)*100:.1f}%")
+                            
+                            # Show creation timeline of high-risk accounts
+                            if not old_active_accounts.empty:
+                                st.subheader("📈 High-Risk Account Creation Timeline")
+                                try:
+                                    # Group by year-month
+                                    old_active_accounts['CREATED_YEAR_MONTH'] = old_active_accounts['CREATED_DATE'].dt.to_period('M')
+                                    timeline_data = old_active_accounts['CREATED_YEAR_MONTH'].value_counts().sort_index()
+                                    
+                                    fig, ax = plt.subplots(figsize=(12, 6))
+                                    timeline_data.plot(kind='bar', ax=ax, color='red', alpha=0.7)
+                                    ax.set_title('High-Risk Active Accounts by Creation Date\n(Accounts >1 year old still active)')
+                                    ax.set_ylabel('Number of High-Risk Accounts')
+                                    ax.set_xlabel('Creation Period')
+                                    plt.xticks(rotation=45, ha='right')
+                                    st.pyplot(fig)
+                                except Exception as timeline_error:
+                                    st.warning("Could not generate timeline chart")
+                        
+                        else:
+                            st.success("✅ No accounts older than 1 year found")
+                            
+                        # Show recent account statistics for comparison
+                        recent_accounts = db_users[valid_dates & (db_users['CREATED_DATE'] >= one_year_ago)]
+                        st.success(f"🆕 {len(recent_accounts)} accounts created in the last year")
+                        
+                    else:
+                        st.warning("Could not parse creation dates from selected column")
+                        
+                except Exception as e:
+                    st.error(f"Error analyzing account ages: {str(e)}")
             
             # 6. Password Policy Analysis
-            if 'PASSWORD_VERSIONS' in db_users.columns:
-                st.subheader("🔐 Password Versions Analysis")
-                pwd_versions = db_users['PASSWORD_VERSIONS'].value_counts()
-                st.dataframe(pwd_versions)
+            if password_col:
+                st.subheader("🔐 Password Security Analysis")
+                try:
+                    pwd_versions = db_users[password_col].value_counts()
+                    st.dataframe(pwd_versions)
+                    
+                    # Check for outdated password versions
+                    outdated_pwd = ['10G', '11G']  # Add versions you consider outdated
+                    users_outdated_pwd = db_users[
+                        db_users[password_col].astype(str).str.upper().isin([v.upper() for v in outdated_pwd])
+                    ]
+                    
+                    if not users_outdated_pwd.empty:
+                        st.warning(f"🔐 {len(users_outdated_pwd)} users using older password versions")
+                        security_findings.append(f"🔐 {len(users_outdated_pwd)} users using older password versions")
+                        analysis_results['outdated_password_users'] = users_outdated_pwd
+                        
+                except Exception as e:
+                    st.error(f"Error analyzing password versions: {str(e)}")
+            
+            # 7. Database Group Integrity Analysis
+            st.subheader("🏗️ Database Group & Default User Integrity")
+
+            # Check if database has groups/profiles
+            if profile_col:
+                try:
+                    total_profiles = db_users[profile_col].nunique()
+                    total_users = len(db_users)
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.metric("Total Profiles/Groups", total_profiles)
+                    with col2:
+                        st.metric("Total Users", total_users)
+                    
+                    # Check 1: Database has proper group structure
+                    if total_profiles <= 1:
+                        st.error("🚨 CRITICAL: Database has only 1 profile/group - No proper segregation of duties!")
+                        security_findings.append("🚨 CRITICAL: Only 1 profile/group found - No SoD implementation")
+                    elif total_profiles < 5:
+                        st.warning("⚠️ WARNING: Limited profile/group structure - Consider implementing more granular access controls")
+                        security_findings.append("⚠️ Limited profile/group structure - Consider more granular controls")
+                    else:
+                        st.success(f"✅ Good: Database has {total_profiles} profiles/groups for proper access control")
+                    
+                    # Check 2: Default profiles analysis
+                    default_profiles = ['DEFAULT', 'BASIC', 'STANDARD', 'NONE']
+                    default_profile_users = db_users[
+                        db_users[profile_col].astype(str).str.upper().isin([p.upper() for p in default_profiles])
+                    ]
+                    
+                    if not default_profile_users.empty:
+                        st.warning(f"⚠️ {len(default_profile_users)} users assigned to default profiles")
+                        
+                        # Show default profile users
+                        display_cols = [username_col, profile_col]
+                        if status_col:
+                            display_cols.append(status_col)
+                        
+                        st.dataframe(default_profile_users[display_cols])
+                        
+                        # Check if non-service accounts are in default profiles
+                        service_accounts = ['SYS', 'SYSTEM', 'DBSNMP', 'ORACLE_OCM', 'XS$NULL']
+                        non_service_in_default = default_profile_users[
+                            ~default_profile_users[username_col].astype(str).str.upper().isin([s.upper() for s in service_accounts])
+                        ]
+                        
+                        if not non_service_in_default.empty:
+                            st.error(f"🚨 HIGH RISK: {len(non_service_in_default)} NON-SERVICE accounts in default profiles!")
+                            st.dataframe(non_service_in_default[display_cols])
+                            security_findings.append(f"🚨 HIGH RISK: {len(non_service_in_default)} non-service accounts in default profiles")
+                        else:
+                            st.info("✅ Only service accounts in default profiles (acceptable)")
+                    
+                except Exception as e:
+                    st.error(f"Error analyzing group structure: {str(e)}")
+
+            # 8. Default User Privilege & Integrity Analysis
+            if username_col:
+                st.subheader("👑 Default User Security Analysis")
                 
-                # Check for users without modern password hashing
-                if '10G' in pwd_versions.index or '11G' in pwd_versions.index:
-                    security_findings.append("🔐 Some users using older password hashing algorithms")
+                try:
+                    # Define default Oracle accounts and their expected states
+                    default_account_checks = {
+                        'SYS': {
+                            'expected_status': 'OPEN',
+                            'risk_if': 'LOCKED',  # SYS should generally be open
+                            'description': 'Data dictionary owner - critical system account'
+                        },
+                        'SYSTEM': {
+                            'expected_status': 'OPEN', 
+                            'risk_if': 'LOCKED',
+                            'description': 'Administrative operations - should be open'
+                        },
+                        'DBSNMP': {
+                            'expected_status': 'OPEN',
+                            'risk_if': 'LOCKED', 
+                            'description': 'Enterprise Manager agent - should be open'
+                        },
+                        'OUTLN': {
+                            'expected_status': 'OPEN',
+                            'risk_if': 'LOCKED',
+                            'description': 'Plan stability - can be locked if not used'
+                        },
+                        'MGMT_VIEW': {
+                            'expected_status': 'OPEN',
+                            'risk_if': 'LOCKED',
+                            'description': 'Enterprise Manager - should be open if EM used'
+                        },
+                        'SYSMAN': {
+                            'expected_status': 'OPEN', 
+                            'risk_if': 'LOCKED',
+                            'description': 'Enterprise Manager super admin - should be open if EM used'
+                        },
+                        'SCOTT': {
+                            'expected_status': 'LOCKED',
+                            'risk_if': 'OPEN',
+                            'description': 'Sample/training account - should be LOCKED in production'
+                        },
+                        'HR': {
+                            'expected_status': 'LOCKED', 
+                            'risk_if': 'OPEN',
+                            'description': 'Sample/training account - should be LOCKED in production'
+                        },
+                        'OE': {
+                            'expected_status': 'LOCKED',
+                            'risk_if': 'OPEN', 
+                            'description': 'Sample/training account - should be LOCKED in production'
+                        }
+                    }
+                    
+                    default_user_issues = []
+                    default_user_summary = []
+                    
+                    for default_user, expected_config in default_account_checks.items():
+                        user_data = db_users[db_users[username_col].astype(str).str.upper() == default_user.upper()]
+                        
+                        if not user_data.empty:
+                            actual_status = user_data[status_col].iloc[0] if status_col else 'UNKNOWN'
+                            profile_name = user_data[profile_col].iloc[0] if profile_col else 'UNKNOWN'
+                            
+                            status_check = "✅" if str(actual_status).upper() == expected_config['expected_status'].upper() else "❌"
+                            
+                            # Check if account is in risky state
+                            is_risky = str(actual_status).upper() == expected_config['risk_if'].upper()
+                            
+                            default_user_summary.append({
+                                'Username': default_user,
+                                'Found': 'YES',
+                                'Current Status': actual_status,
+                                'Expected Status': expected_config['expected_status'],
+                                'Status Check': status_check,
+                                'Risk': 'HIGH' if is_risky else 'LOW',
+                                'Description': expected_config['description']
+                            })
+                            
+                            if is_risky:
+                                default_user_issues.append(f"🚨 {default_user} is {actual_status} but should be {expected_config['expected_status']} - {expected_config['description']}")
+                        
+                        else:
+                            default_user_summary.append({
+                                'Username': default_user,
+                                'Found': 'NO',
+                                'Current Status': 'NOT FOUND',
+                                'Expected Status': 'N/A',
+                                'Status Check': '⚠️',
+                                'Risk': 'MEDIUM',
+                                'Description': expected_config['description']
+                            })
+                            default_user_issues.append(f"⚠️ Default account {default_user} not found in database")
+                    
+                    # Display default user analysis
+                    if default_user_summary:
+                        summary_df = pd.DataFrame(default_user_summary)
+                        st.dataframe(summary_df)
+                        
+                        # Show risk summary
+                        high_risk_count = len([u for u in default_user_issues if '🚨' in u])
+                        medium_risk_count = len([u for u in default_user_issues if '⚠️' in u])
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.metric("High Risk Default Users", high_risk_count)
+                        with col2:
+                            st.metric("Medium Risk Findings", medium_risk_count)
+                        
+                        # Add findings to security report
+                        security_findings.extend(default_user_issues)
+                        analysis_results['default_user_analysis'] = pd.DataFrame(default_user_summary)
+                    
+                except Exception as e:
+                    st.error(f"Error analyzing default users: {str(e)}")
+
+            # 9. Orphaned/Unauthorized Profile Analysis
+            if profile_col and username_col:
+                st.subheader("🔍 Profile Usage & Authorization Analysis")
+                
+                try:
+                    # Check for profiles with very few users (potential orphaned/custom profiles)
+                    profile_user_counts = db_users[profile_col].value_counts()
+                    
+                    # Profiles with only 1 user (potential service accounts or custom profiles)
+                    single_user_profiles = profile_user_counts[profile_user_counts == 1]
+                    
+                    if not single_user_profiles.empty:
+                        st.info(f"🔍 {len(single_user_profiles)} profiles have only 1 user")
+                        
+                        # Get the actual users for these profiles
+                        single_user_details = db_users[db_users[profile_col].isin(single_user_profiles.index)]
+                        
+                        display_cols = [username_col, profile_col]
+                        if status_col:
+                            display_cols.append(status_col)
+                        if created_col:
+                            display_cols.append(created_col)
+                        
+                        st.dataframe(single_user_details[display_cols].head(10))
+                        
+                        # Check if these are known service accounts or potential unauthorized profiles
+                        service_accounts = ['SYS', 'SYSTEM', 'DBSNMP', 'SYSMAN', 'ORACLE_OCM']
+                        unknown_single_users = single_user_details[
+                            ~single_user_details[username_col].astype(str).str.upper().isin([s.upper() for s in service_accounts])
+                        ]
+                        
+                        if not unknown_single_users.empty:
+                            st.warning(f"⚠️ {len(unknown_single_users)} non-service accounts in single-user profiles - review for authorization")
+                            security_findings.append(f"⚠️ {len(unknown_single_users)} non-service accounts in single-user profiles - potential unauthorized access")
+                    
+                    # Check for profiles with no users (orphaned profiles)
+                    # This would require comparing against all possible profiles in the database
+                    
+                except Exception as e:
+                    st.error(f"Error analyzing profile usage: {str(e)}")
+
+            # 10. Privilege Escalation Risk Analysis
+            if profile_col and username_col:
+                st.subheader("⚡ Privilege Escalation Risk Analysis")
+                
+                try:
+                    # Identify users with powerful profiles but non-standard names
+                    powerful_profiles = ['DBA', 'SYSDBA', 'SYSOPER', 'SYSDG', 'SYSBACKUP', 'SYSKM']
+                    
+                    powerful_users = db_users[
+                        db_users[profile_col].astype(str).str.upper().isin([p.upper() for p in powerful_profiles])
+                    ]
+                    
+                    if not powerful_users.empty:
+                        # Check if these are known administrative accounts
+                        known_admin_accounts = ['SYS', 'SYSTEM', 'SYSMAN']
+                        
+                        unknown_powerful_users = powerful_users[
+                            ~powerful_users[username_col].astype(str).str.upper().isin([a.upper() for a in known_admin_accounts])
+                        ]
+                        
+                        if not unknown_powerful_users.empty:
+                            st.error(f"🚨 HIGH RISK: {len(unknown_powerful_users)} non-standard users with powerful privileges!")
+                            
+                            display_cols = [username_col, profile_col]
+                            if status_col:
+                                display_cols.append(status_col)
+                            if created_col:
+                                display_cols.append(created_col)
+                            
+                            st.dataframe(unknown_powerful_users[display_cols])
+                            security_findings.append(f"🚨 HIGH RISK: {len(unknown_powerful_users)} non-standard users with powerful admin privileges")
+                            
+                            # Check if any of these are active
+                            if status_col:
+                                active_powerful_unknown = unknown_powerful_users[
+                                    unknown_powerful_users[status_col].astype(str).str.upper().isin(['OPEN', 'ACTIVE'])
+                                ]
+                                if not active_powerful_unknown.empty:
+                                    st.error(f"🔴 CRITICAL: {len(active_powerful_unknown)} unknown users with admin privileges are ACTIVE!")
+                                    security_findings.append(f"🔴 CRITICAL: {len(active_powerful_unknown)} unknown admin users are ACTIVE")
+                        else:
+                            st.success("✅ All powerful privileges assigned to known administrative accounts")
+                    
+                except Exception as e:
+                    st.error(f"Error analyzing privilege escalation risks: {str(e)}")
             
-            # 7. Security Findings Summary
-            st.subheader("📋 Security Findings Summary")
+            # =============================================================================
+            # SECURITY FINDINGS SUMMARY
+            # =============================================================================
+            st.header("📋 Security Findings Summary")
+            
             if security_findings:
-                for finding in security_findings:
-                    st.write(f"• {finding}")
+                for i, finding in enumerate(security_findings, 1):
+                    st.write(f"{i}. {finding}")
+                
+                # Risk Level Assessment
+                risk_count = len(security_findings)
+                critical_count = len([f for f in security_findings if '🔴' in f])
+                high_count = len([f for f in security_findings if '🚨' in f and '🔴' not in f])
+                
+                if critical_count > 0:
+                    st.error("🔴 CRITICAL RISK: Immediate action required!")
+                elif high_count > 2:
+                    st.error("🚨 HIGH RISK: Multiple serious security issues detected")
+                elif risk_count > 5:
+                    st.warning("🟡 MEDIUM RISK: Several security issues detected")
+                else:
+                    st.info("🟢 LOW RISK: Minor security issues detected")
             else:
-                st.success("✅ No major security issues detected")
+                st.success("🎉 EXCELLENT: No security issues detected!")
             
-            # =============================================================================
-            # PROFILE MANAGEMENT SECTION (Existing Functionality)
-            # =============================================================================
-            st.header("👥 Profile Management")
-            
-            # Extract Unique Profiles 
-            unique_profiles = db_users["PROFILE"].unique()
-
-            # Select the profile to View its Users 
-            selected_profile = st.selectbox("🔎 Select a Profile Name: ", unique_profiles)
-
-            # Display Users for the Selected Profile
-            profiles = db_users.groupby("PROFILE")
-            users_df = profiles.get_group(selected_profile)
-            st.subheader(f"🗂 Users with Profile: **{selected_profile}**")
-            st.dataframe(users_df)
-
             # =============================================================================
             # EXPORT SECTION
             # =============================================================================
             st.header("📤 Export Results")
             
-            # Create comprehensive report
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                # Sheet 1: All Users
-                db_users.to_excel(writer, sheet_name='All_Users', index=False)
-                
-                # Sheet 2: Security Findings Summary
-                findings_df = pd.DataFrame({
-                    'Finding': security_findings,
+            if st.button("📊 Generate Comprehensive Audit Report"):
+                with st.spinner("Generating audit report..."):
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                        # Sheet 1: All Users
+                        db_users.to_excel(writer, sheet_name='All_Users', index=False)
+                        
+                        # Sheet 2: Security Findings Summary
+                        findings_df = pd.DataFrame({
+                            'Finding': security_findings,
+                            'Risk_Level': ['Critical' if '🔴' in f else 'High' if '🚨' in f else 'Medium' if '⚠️' in f else 'Low' for f in security_findings],
+                            'Timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        })
+                        findings_df.to_excel(writer, sheet_name='Security_Findings', index=False)
+                        
+                        # Additional sheets for each analysis result
+                        for result_name, result_data in analysis_results.items():
+                            if not result_data.empty:
+                                sheet_name = result_name.replace('_', ' ').title()[:31]
+                                result_data.to_excel(writer, sheet_name=sheet_name, index=False)
+                        
+                        # Profile Summary
+                        if profile_col:
+                            profile_summary = db_users[profile_col].value_counts().reset_index()
+                            profile_summary.columns = ['Profile', 'User_Count']
+                            profile_summary.to_excel(writer, sheet_name='Profile_Summary', index=False)
+                    
+                    output.seek(0)
+                    
+                    st.download_button(
+                        label="📥 Download Comprehensive Audit Report",
+                        data=output,
+                        file_name=f"Database_Security_Audit_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="audit_report"
+                    )
+            
+            # Quick CSV export of findings
+            if security_findings:
+                csv_findings = pd.DataFrame({
+                    'Security_Finding': security_findings,
                     'Timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 })
-                findings_df.to_excel(writer, sheet_name='Security_Findings', index=False)
-                
-                # Sheet 3: Inactive Accounts
-                if 'inactive_accounts' in locals() and not inactive_accounts.empty:
-                    inactive_accounts.to_excel(writer, sheet_name='Inactive_Accounts', index=False)
-                
-                # Sheet 4: DBA Users
-                if 'dba_users' in locals() and not dba_users.empty:
-                    dba_users.to_excel(writer, sheet_name='DBA_Users', index=False)
-                
-                # Sheet 5: Profile Summary
-                profile_summary = db_users['PROFILE'].value_counts().reset_index()
-                profile_summary.columns = ['Profile', 'User_Count']
-                profile_summary.to_excel(writer, sheet_name='Profile_Summary', index=False)
-                
-                # Additional sheets for each profile
-                for profile in unique_profiles:
-                    profile_users = db_users[db_users["PROFILE"] == profile]
-                    sheet_name = str(profile)[:31]  # Excel sheet name limit
-                    profile_users.to_excel(writer, sheet_name=sheet_name, index=False)
-            
-            output.seek(0)
-
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.download_button(
-                    label="📥 Download Comprehensive Audit Report",
-                    data=output,
-                    file_name=f"Database_Security_Audit_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            
-            with col2:
-                # Download security findings as CSV
-                csv_findings = pd.DataFrame({'Security Findings': security_findings})
                 csv_output = csv_findings.to_csv(index=False).encode('utf-8')
+                
                 st.download_button(
                     label="📋 Download Security Findings (CSV)",
                     data=csv_output,
                     file_name="security_findings.csv",
-                    mime="text/csv"
+                    mime="text/csv",
+                    key="findings_csv"
                 )
                 
         except Exception as e:
             st.error(f"❌ Error processing file: {str(e)}")
-            st.info("Please ensure the file is a valid ORACLE DBA_USER report with proper column headers.")
+            st.info("Please ensure the file is a valid Excel file with proper data formatting.")
     else:
         # Show sample expected columns when no file is uploaded
         st.info("""
-        **Expected Columns in DBA_USER Report:**
-        - USERNAME
-        - ACCOUNT STATUS (OPEN, LOCKED, EXPIRED, etc.)
-        - PROFILE
-        - CREATED (date)
-        - PASSWORD_VERSIONS
-        - DEFAULT_TABLESPACE
-        - TEMPORARY_TABLESPACE
-        - LAST_LOGIN (if available)
+        **📋 Expected Columns in DBA_USER Report:**
+        - **Username Column**: Contains user identifiers (e.g., USERNAME, USER_NAME, USER)
+        - **Status Column**: Shows account status (e.g., ACCOUNT_STATUS, STATUS, USER_STATUS)
+        - **Profile Column**: Contains profile assignments (e.g., PROFILE, USER_PROFILE)
+        - **Created Date**: Account creation date (e.g., CREATED, CREATE_DATE, DATE_CREATED)
+        - **Password Version**: Password hash versions (e.g., PASSWORD_VERSIONS, PWD_VERSION)
+        - **Privilege/Role**: User roles and privileges (e.g., PRIVILEGE, ROLE, GRANTED_ROLE)
+        
+        **💡 Tip**: The tool will automatically detect your column names and let you map them to the required fields.
         """)
+
 def database_privilege_users():
     st.title("🔑 Database Privilege Users")
     uploaded_file = st.file_uploader("📂 Upload ORACLE DBA_ROLE_PRIVS", type=["xlsx"], key="db_priv")
