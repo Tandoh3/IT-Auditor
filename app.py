@@ -1862,17 +1862,40 @@ def database_groups():
                         })
                         findings_df.to_excel(writer, sheet_name='Security_Findings', index=False)
                         
+                        # Sheet 3: Profile Summary
+                        if profile_col:
+                            profile_summary = db_users[profile_col].value_counts().reset_index()
+                            profile_summary.columns = ['Profile', 'User_Count']
+                            profile_summary.to_excel(writer, sheet_name='Profile_Summary', index=False)
+                        
+                        # Sheet 4: Status Summary
+                        if status_col:
+                            status_summary = db_users[status_col].value_counts().reset_index()
+                            status_summary.columns = ['Status', 'User_Count']
+                            status_summary.to_excel(writer, sheet_name='Status_Summary', index=False)
+                        
                         # Additional sheets for each analysis result
                         for result_name, result_data in analysis_results.items():
                             if not result_data.empty:
                                 sheet_name = result_name.replace('_', ' ').title()[:31]
                                 result_data.to_excel(writer, sheet_name=sheet_name, index=False)
                         
-                        # Profile Summary
+                        # INDIVIDUAL GROUP SHEETS - Add sheets for each profile/group
                         if profile_col:
-                            profile_summary = db_users[profile_col].value_counts().reset_index()
-                            profile_summary.columns = ['Profile', 'User_Count']
-                            profile_summary.to_excel(writer, sheet_name='Profile_Summary', index=False)
+                            unique_profiles = db_users[profile_col].unique()
+                            for profile in unique_profiles:
+                                group_users = db_users[db_users[profile_col] == profile]
+                                if not group_users.empty:
+                                    # Clean sheet name for Excel (max 31 chars, no invalid characters)
+                                    sheet_name = f"Profile_{str(profile)}"[:31]
+                                    # Remove invalid characters for Excel sheet names
+                                    sheet_name = ''.join(c for c in sheet_name if c not in r'[]:*?/\\')
+                                    try:
+                                        group_users.to_excel(writer, sheet_name=sheet_name, index=False)
+                                    except Exception as sheet_error:
+                                        # If sheet name is still problematic, use a safe name
+                                        safe_sheet_name = f"Group_{hash(profile) % 10000}"[:31]
+                                        group_users.to_excel(writer, sheet_name=safe_sheet_name, index=False)
                     
                     output.seek(0)
                     
@@ -1883,6 +1906,35 @@ def database_groups():
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         key="audit_report"
                     )
+            
+            # Separate download for just the groups (original functionality)
+            if profile_col:
+                st.subheader("📁 Download Group Listings Only")
+                
+                unique_profiles = db_users[profile_col].unique()
+                groups_output = io.BytesIO()
+                with pd.ExcelWriter(groups_output, engine="xlsxwriter") as writer:
+                    for profile in unique_profiles:
+                        group = db_users[db_users[profile_col] == profile]
+                        if not group.empty:
+                            # Clean sheet name
+                            sheet_name = str(profile)[:31]
+                            sheet_name = ''.join(c for c in sheet_name if c not in r'[]:*?/\\')
+                            try:
+                                group.to_excel(writer, sheet_name=sheet_name, index=False)
+                            except:
+                                safe_name = f"Group_{hash(profile) % 10000}"[:31]
+                                group.to_excel(writer, sheet_name=safe_name, index=False)
+                
+                groups_output.seek(0)
+                
+                st.download_button(
+                    label="📥 Download Consolidated Users of Profiles",
+                    data=groups_output,
+                    file_name="Consolidated_Users_of_Profiles.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="groups_only"
+                )
             
             # Quick CSV export of findings
             if security_findings:
