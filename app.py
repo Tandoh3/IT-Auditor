@@ -1909,8 +1909,6 @@ def database_groups():
             
             # Separate download for just the groups (original functionality)
             if profile_col:
-                st.subheader("📁 Download Group Listings Only")
-                
                 unique_profiles = db_users[profile_col].unique()
                 groups_output = io.BytesIO()
                 with pd.ExcelWriter(groups_output, engine="xlsxwriter") as writer:
@@ -1927,7 +1925,7 @@ def database_groups():
                                 group.to_excel(writer, sheet_name=safe_name, index=False)
                 
                 groups_output.seek(0)
-                
+
                 st.download_button(
                     label="📥 Download Consolidated Users of Profiles",
                     data=groups_output,
