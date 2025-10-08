@@ -23,7 +23,7 @@ from thefuzz import process, fuzz
 
 # 🎨 Configure Streamlit Page
 st.set_page_config(
-    page_title="🔐 Security & IAM Management Suite",
+    page_title="🔐 Your-IT-Auditor",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
