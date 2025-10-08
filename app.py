@@ -1249,11 +1249,11 @@ def database_groups():
             security_findings = []
             
             # 1. Identify Inactive/Locked Accounts
-            if 'ACCOUNT_STATUS' in db_users.columns:
-                inactive_accounts = db_users[db_users['ACCOUNT_STATUS'].str.upper().isin(['LOCKED', 'EXPIRED', 'EXPIRED(GRACE)', 'INACTIVE'])]
+            if 'ACCOUNT STATUS' in db_users.columns:
+                inactive_accounts = db_users[db_users['ACCOUNT STATUS'].str.upper().isin(['LOCKED', 'EXPIRED', 'EXPIRED(GRACE)', 'INACTIVE'])]
                 if not inactive_accounts.empty:
                     st.subheader("🔒 Inactive/Locked Accounts")
-                    st.dataframe(inactive_accounts[['USERNAME', 'ACCOUNT_STATUS', 'CREATED']].head(10))
+                    st.dataframe(inactive_accounts[['USERNAME', 'ACCOUNT STATUS', 'CREATED']].head(10))
                     security_findings.append(f"🚨 {len(inactive_accounts)} inactive/locked accounts found")
                     
                     # Show inactive accounts by profile
@@ -1268,7 +1268,7 @@ def database_groups():
                 found_default = db_users[db_users['USERNAME'].str.upper().isin([u.upper() for u in default_users])]
                 if not found_default.empty:
                     st.subheader("⚠️ Default Database Accounts")
-                    st.dataframe(found_default[['USERNAME', 'ACCOUNT_STATUS', 'PROFILE']])
+                    st.dataframe(found_default[['USERNAME', 'ACCOUNT STATUS', 'PROFILE']])
                     security_findings.append(f"⚠️ {len(found_default)} default database accounts found")
             
             # 3. Identify Users with DBA Privileges
@@ -1277,7 +1277,7 @@ def database_groups():
                 dba_users = db_users[db_users['PROFILE'].str.upper().isin([p.upper() for p in dba_profiles])]
                 if not dba_users.empty:
                     st.subheader("👑 Users with DBA Privileges")
-                    st.dataframe(dba_users[['USERNAME', 'PROFILE', 'ACCOUNT_STATUS']])
+                    st.dataframe(dba_users[['USERNAME', 'PROFILE', 'ACCOUNT STATUS']])
                     security_findings.append(f"👑 {len(dba_users)} users with DBA privileges")
             
             # 4. Check for Old Accounts
@@ -1415,7 +1415,7 @@ def database_groups():
         st.info("""
         **Expected Columns in DBA_USER Report:**
         - USERNAME
-        - ACCOUNT_STATUS (OPEN, LOCKED, EXPIRED, etc.)
+        - ACCOUNT STATUS (OPEN, LOCKED, EXPIRED, etc.)
         - PROFILE
         - CREATED (date)
         - PASSWORD_VERSIONS
