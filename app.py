@@ -1906,34 +1906,7 @@ def database_groups():
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         key="audit_report"
                     )
-            
-            # Separate download for just the groups (original functionality)
-            if profile_col:
-                unique_profiles = db_users[profile_col].unique()
-                groups_output = io.BytesIO()
-                with pd.ExcelWriter(groups_output, engine="xlsxwriter") as writer:
-                    for profile in unique_profiles:
-                        group = db_users[db_users[profile_col] == profile]
-                        if not group.empty:
-                            # Clean sheet name
-                            sheet_name = str(profile)[:31]
-                            sheet_name = ''.join(c for c in sheet_name if c not in r'[]:*?/\\')
-                            try:
-                                group.to_excel(writer, sheet_name=sheet_name, index=False)
-                            except:
-                                safe_name = f"Group_{hash(profile) % 10000}"[:31]
-                                group.to_excel(writer, sheet_name=safe_name, index=False)
-                
-                groups_output.seek(0)
-
-                st.download_button(
-                    label="📥 Download Consolidated Users of Profiles",
-                    data=groups_output,
-                    file_name="Consolidated_Users_of_Profiles.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="groups_only"
-                )
-            
+                    
             # Quick CSV export of findings
             if security_findings:
                 csv_findings = pd.DataFrame({
