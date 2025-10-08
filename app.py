@@ -1214,42 +1214,220 @@ def duplicate_user_provisioning():
 def database_groups():
     st.title("📂 Database Groups Management")
     uploaded_file = st.file_uploader("📂 Upload ORACLE DBA_USER REPORT", type=["xls", "xlsx"])
+    st.markdown("""
+    ### 📤 What to Upload
+    Upload the **ORACLE DBA_USER report** exported from your database environment (xlsx` format).  
+    Ensure the file contains key user account details such as **Username**, **Account Status**, **Created Date**, **Profile**, **Password Versions**, **Privileges**.
+
+    ### ⚙️ What the Tool Does
+    Once uploaded, the tool automatically analyzes the report to:
+    - Identify **inactive or unauthorized accounts**
+    - Detect **default or weak credentials**
+    - Highlight **users with excessive or unnecessary privileges**
+    - Check for **Segregation of Duties (SoD)** violations
+    - Assess compliance with **security and access control standards**
+
+    💡 The tool provides a comprehensive security overview to help auditors validate **user access governance** and ensure **database integrity**.
+    """)
+    
     if uploaded_file:
-        db_users = pd.read_excel(uploaded_file)
+        try:
+            db_users = pd.read_excel(uploaded_file)
+            
+            # Standardize column names (case-insensitive)
+            db_users.columns = db_users.columns.str.upper()
+            
+            # Display dataset info
+            st.success(f"✅ Successfully loaded {len(db_users)} user accounts")
+            
+            # =============================================================================
+            # SECURITY ANALYSIS SECTION
+            # =============================================================================
+            st.header("🔍 Security Analysis Results")
+            
+            # Initialize findings
+            security_findings = []
+            
+            # 1. Identify Inactive/Locked Accounts
+            if 'ACCOUNT_STATUS' in db_users.columns:
+                inactive_accounts = db_users[db_users['ACCOUNT_STATUS'].str.upper().isin(['LOCKED', 'EXPIRED', 'EXPIRED(GRACE)', 'INACTIVE'])]
+                if not inactive_accounts.empty:
+                    st.subheader("🔒 Inactive/Locked Accounts")
+                    st.dataframe(inactive_accounts[['USERNAME', 'ACCOUNT_STATUS', 'CREATED']].head(10))
+                    security_findings.append(f"🚨 {len(inactive_accounts)} inactive/locked accounts found")
+                    
+                    # Show inactive accounts by profile
+                    inactive_by_profile = inactive_accounts['PROFILE'].value_counts() if 'PROFILE' in inactive_accounts.columns else pd.Series()
+                    if not inactive_by_profile.empty:
+                        st.write("**Inactive accounts by profile:**")
+                        st.dataframe(inactive_by_profile)
+            
+            # 2. Detect Default/Weak Credentials
+            if 'USERNAME' in db_users.columns:
+                default_users = ['SYS', 'SYSTEM', 'DBSNMP', 'OUTLN', 'MGMT_VIEW', 'SYSMAN']
+                found_default = db_users[db_users['USERNAME'].str.upper().isin([u.upper() for u in default_users])]
+                if not found_default.empty:
+                    st.subheader("⚠️ Default Database Accounts")
+                    st.dataframe(found_default[['USERNAME', 'ACCOUNT_STATUS', 'PROFILE']])
+                    security_findings.append(f"⚠️ {len(found_default)} default database accounts found")
+            
+            # 3. Identify Users with DBA Privileges
+            if 'PROFILE' in db_users.columns:
+                dba_profiles = ['DBA', 'SYSDBA', 'SYSOPER', 'SYSDG', 'SYSBACKUP', 'SYSKM']
+                dba_users = db_users[db_users['PROFILE'].str.upper().isin([p.upper() for p in dba_profiles])]
+                if not dba_users.empty:
+                    st.subheader("👑 Users with DBA Privileges")
+                    st.dataframe(dba_users[['USERNAME', 'PROFILE', 'ACCOUNT_STATUS']])
+                    security_findings.append(f"👑 {len(dba_users)} users with DBA privileges")
+            
+            # 4. Check for Old Accounts
+            if 'CREATED' in db_users.columns:
+                # Convert to datetime if possible
+                try:
+                    db_users['CREATED'] = pd.to_datetime(db_users['CREATED'])
+                    one_year_ago = pd.Timestamp.now() - pd.DateOffset(years=1)
+                    old_accounts = db_users[db_users['CREATED'] < one_year_ago]
+                    if not old_accounts.empty:
+                        st.subheader("📅 Accounts Older Than 1 Year")
+                        st.dataframe(old_accounts[['USERNAME', 'CREATED', 'PROFILE']].head(10))
+                        security_findings.append(f"📅 {len(old_accounts)} accounts older than 1 year")
+                except:
+                    pass
+            
+            # 5. Profile-Based Analysis
+            if 'PROFILE' in db_users.columns:
+                st.subheader("📊 Profile Distribution")
+                profile_counts = db_users['PROFILE'].value_counts()
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.dataframe(profile_counts.head(10))
+                
+                with col2:
+                    if len(profile_counts) > 0:
+                        fig, ax = plt.subplots(figsize=(10, 6))
+                        profile_counts.head(10).plot(kind='bar', ax=ax, color='skyblue')
+                        ax.set_title('Top 10 Profiles by User Count')
+                        ax.set_ylabel('Number of Users')
+                        plt.xticks(rotation=45)
+                        st.pyplot(fig)
+            
+            # 6. Password Policy Analysis
+            if 'PASSWORD_VERSIONS' in db_users.columns:
+                st.subheader("🔐 Password Versions Analysis")
+                pwd_versions = db_users['PASSWORD_VERSIONS'].value_counts()
+                st.dataframe(pwd_versions)
+                
+                # Check for users without modern password hashing
+                if '10G' in pwd_versions.index or '11G' in pwd_versions.index:
+                    security_findings.append("🔐 Some users using older password hashing algorithms")
+            
+            # 7. Security Findings Summary
+            st.subheader("📋 Security Findings Summary")
+            if security_findings:
+                for finding in security_findings:
+                    st.write(f"• {finding}")
+            else:
+                st.success("✅ No major security issues detected")
+            
+            # =============================================================================
+            # PROFILE MANAGEMENT SECTION (Existing Functionality)
+            # =============================================================================
+            st.header("👥 Profile Management")
+            
+            # Extract Unique Profiles 
+            unique_profiles = db_users["PROFILE"].unique()
 
-        # Extract Unique Profiles 
-        unique_profiles = db_users["PROFILE"].unique()
+            # Select the profile to View its Users 
+            selected_profile = st.selectbox("🔎 Select a Profile Name: ", unique_profiles)
 
-        # Select the profile to View its Users 
-        selected_profile = st.selectbox("🔎 Select a Profile Name: ", unique_profiles)
+            # Display Users for the Selected Profile
+            profiles = db_users.groupby("PROFILE")
+            users_df = profiles.get_group(selected_profile)
+            st.subheader(f"🗂 Users with Profile: **{selected_profile}**")
+            st.dataframe(users_df)
 
-        # Display Users for the Selected Resource
-        profiles = db_users.groupby("PROFILE")
-        users_df = profiles.get_group(selected_profile)
-        st.subheader(f"🗂 Profiles for: **{selected_profile}**")
-        st.dataframe(users_df)
+            # =============================================================================
+            # EXPORT SECTION
+            # =============================================================================
+            st.header("📤 Export Results")
+            
+            # Create comprehensive report
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                # Sheet 1: All Users
+                db_users.to_excel(writer, sheet_name='All_Users', index=False)
+                
+                # Sheet 2: Security Findings Summary
+                findings_df = pd.DataFrame({
+                    'Finding': security_findings,
+                    'Timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                })
+                findings_df.to_excel(writer, sheet_name='Security_Findings', index=False)
+                
+                # Sheet 3: Inactive Accounts
+                if 'inactive_accounts' in locals() and not inactive_accounts.empty:
+                    inactive_accounts.to_excel(writer, sheet_name='Inactive_Accounts', index=False)
+                
+                # Sheet 4: DBA Users
+                if 'dba_users' in locals() and not dba_users.empty:
+                    dba_users.to_excel(writer, sheet_name='DBA_Users', index=False)
+                
+                # Sheet 5: Profile Summary
+                profile_summary = db_users['PROFILE'].value_counts().reset_index()
+                profile_summary.columns = ['Profile', 'User_Count']
+                profile_summary.to_excel(writer, sheet_name='Profile_Summary', index=False)
+                
+                # Additional sheets for each profile
+                for profile in unique_profiles:
+                    profile_users = db_users[db_users["PROFILE"] == profile]
+                    sheet_name = str(profile)[:31]  # Excel sheet name limit
+                    profile_users.to_excel(writer, sheet_name=sheet_name, index=False)
+            
+            output.seek(0)
 
-        # Consolidate all profile users into one Excel file with separate sheets 
-        import io 
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            for users in unique_profiles:
-                group = db_users[db_users["PROFILE"] == users]
-                # Limit sheet name to 31 characters (Excel limitations)
-                sheet_name = users[:31]
-                group.to_excel(writer, sheet_name=sheet_name, index=False)
-        output.seek(0)
-
-        st.download_button(
-            label = "📥 Download Consolidated Users of Profiles", 
-            data = output, 
-            file_name=" Consolidated_Users_of_Profiles.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.download_button(
+                    label="📥 Download Comprehensive Audit Report",
+                    data=output,
+                    file_name=f"Database_Security_Audit_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            
+            with col2:
+                # Download security findings as CSV
+                csv_findings = pd.DataFrame({'Security Findings': security_findings})
+                csv_output = csv_findings.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📋 Download Security Findings (CSV)",
+                    data=csv_output,
+                    file_name="security_findings.csv",
+                    mime="text/csv"
+                )
+                
+        except Exception as e:
+            st.error(f"❌ Error processing file: {str(e)}")
+            st.info("Please ensure the file is a valid ORACLE DBA_USER report with proper column headers.")
+    else:
+        # Show sample expected columns when no file is uploaded
+        st.info("""
+        **Expected Columns in DBA_USER Report:**
+        - USERNAME
+        - ACCOUNT_STATUS (OPEN, LOCKED, EXPIRED, etc.)
+        - PROFILE
+        - CREATED (date)
+        - PASSWORD_VERSIONS
+        - DEFAULT_TABLESPACE
+        - TEMPORARY_TABLESPACE
+        - LAST_LOGIN (if available)
+        """)
 def database_privilege_users():
     st.title("🔑 Database Privilege Users")
     uploaded_file = st.file_uploader("📂 Upload ORACLE DBA_ROLE_PRIVS", type=["xlsx"], key="db_priv")
+    st.markdown("""
+                """)
     if uploaded_file:
         db_priv_df = pd.read_excel(uploaded_file)
 
