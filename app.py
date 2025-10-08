@@ -24,13 +24,13 @@ from thefuzz import process, fuzz
 # 🎨 Configure Streamlit Page
 st.set_page_config(
     page_title="🔐 Your-IT-Auditor",
-    page_icon="🛡️",
-    layout="narrow",
+    page_icon="💻",
+    layout="centered",  
     initial_sidebar_state="expanded"
 )
 
 # 🌟 Sidebar Navigation
-st.sidebar.title("🔍 **Your-IT-Auditor**")
+st.sidebar.title("🔍 **Security & IAM Management Suite**")
 st.sidebar.markdown("---")
 
 # Main category selection
