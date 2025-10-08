@@ -1216,7 +1216,7 @@ def database_groups():
     uploaded_file = st.file_uploader("📂 Upload ORACLE DBA_USER REPORT", type=["xls", "xlsx"])
     st.markdown("""
     ### 📤 What to Upload
-    Upload the **ORACLE DBA_USER report** exported from your database environment (xlsx` format).  
+    Upload the **ORACLE DBA_USER report** exported from your database environment (xlsx format).  
     Ensure the file contains key user account details such as **Username**, **Account Status**, **Created Date**, **Profile**, **Password Versions**, **Privileges**.
 
     ### ⚙️ What the Tool Does
