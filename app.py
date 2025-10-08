@@ -25,12 +25,12 @@ from thefuzz import process, fuzz
 st.set_page_config(
     page_title="🔐 Your-IT-Auditor",
     page_icon="🛡️",
-    layout="wide",
+    layout="narrow",
     initial_sidebar_state="expanded"
 )
 
 # 🌟 Sidebar Navigation
-st.sidebar.title("🔍 **Security & IAM Management Suite**")
+st.sidebar.title("🔍 **Your-IT-Auditor**")
 st.sidebar.markdown("---")
 
 # Main category selection
