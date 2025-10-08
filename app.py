@@ -1300,7 +1300,7 @@ def database_groups():
             security_findings = []
             analysis_results = {}
             
-            # 1. Identify Inactive/Locked Accounts
+            # 1. Identify Inactive/Locked Accounts (INFORMATIONAL - Not a risk)
             if status_col:
                 st.subheader("🔒 Account Status Analysis")
                 try:
@@ -1314,7 +1314,7 @@ def database_groups():
                     ]
                     
                     if not inactive_accounts.empty:
-                        st.warning(f"🚨 {len(inactive_accounts)} inactive/locked accounts found")
+                        st.info(f"ℹ️ {len(inactive_accounts)} inactive/locked accounts found (this is normal security practice)")
                         display_cols = [username_col, status_col]
                         if created_col:
                             display_cols.append(created_col)
@@ -1322,7 +1322,6 @@ def database_groups():
                             display_cols.append(profile_col)
                         
                         st.dataframe(inactive_accounts[display_cols].head(15))
-                        security_findings.append(f"🚨 {len(inactive_accounts)} inactive/locked accounts found")
                         analysis_results['inactive_accounts'] = inactive_accounts
                     else:
                         st.success("✅ No inactive/locked accounts found")
@@ -1459,8 +1458,8 @@ def database_groups():
                             
                             # Informational: Old accounts that are properly managed
                             if not old_inactive_accounts.empty:
-                                st.info(f"✅ {len(old_inactive_accounts)} old accounts are properly locked/expired")
-                                security_findings.append(f"✅ {len(old_inactive_accounts)} old accounts properly locked/expired")
+                                st.success(f"✅ {len(old_inactive_accounts)} old accounts are properly locked/expired")
+                                analysis_results['old_inactive_accounts'] = old_inactive_accounts
                             
                             # Show overall old account statistics
                             col1, col2, col3 = st.columns(3)
@@ -1783,6 +1782,40 @@ def database_groups():
                     
                 except Exception as e:
                     st.error(f"Error analyzing privilege escalation risks: {str(e)}")
+
+            # =============================================================================
+            # ORIGINAL GROUP MANAGEMENT FUNCTIONALITY
+            # =============================================================================
+            if profile_col:
+                st.header("👥 Profile Management")
+                
+                # Extract Unique Profiles 
+                unique_profiles = db_users[profile_col].unique()
+
+                # Select the profile to View its Users 
+                selected_profile = st.selectbox("🔎 Select a Profile Name: ", unique_profiles)
+
+                # Display Users for the Selected Profile
+                profile_users = db_users[db_users[profile_col] == selected_profile]
+                st.subheader(f"🗂 Users with Profile: **{selected_profile}**")
+                st.dataframe(profile_users)
+
+                # Consolidate all profile users into one Excel file with separate sheets 
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                    for profile in unique_profiles:
+                        group = db_users[db_users[profile_col] == profile]
+                        # Limit sheet name to 31 characters (Excel limitations)
+                        sheet_name = str(profile)[:31]
+                        group.to_excel(writer, sheet_name=sheet_name, index=False)
+                output.seek(0)
+
+                st.download_button(
+                    label = "📥 Download Consolidated Users of Profiles", 
+                    data = output, 
+                    file_name="Consolidated_Users_of_Profiles.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
             
             # =============================================================================
             # SECURITY FINDINGS SUMMARY
