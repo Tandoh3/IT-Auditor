@@ -22,15 +22,29 @@ from datetime import timedelta
 from thefuzz import process, fuzz
 
 # 🎨 Configure Streamlit Page
+# --- Page Configuration ---
 st.set_page_config(
     page_title="🔐 Your-IT-Auditor",
     page_icon="💻",
-    layout="centered",  
+    layout="centered",  # 👈 now it's narrow
     initial_sidebar_state="expanded"
 )
 
+# --- Custom Styling for Width Control ---
+st.markdown(
+    """
+    <style>
+    .block-container {
+        max-width: 1000px;  
+        padding-top: 2rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # 🌟 Sidebar Navigation
-st.sidebar.title("🔍 **Security & IAM Management Suite**")
+st.sidebar.title("🔍 **Your-IT-Auditor**")
 st.sidebar.markdown("---")
 
 # Main category selection
